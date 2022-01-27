@@ -1,5 +1,5 @@
 import { Protocol } from "./protocol.ts";
-import { parseArgs, sleep, writeAll } from "./utils.ts";
+import { parseArgs, sleep, type TaggedPacket, writeAll } from "./utils.ts";
 
 const args = parseArgs(Deno.args);
 
@@ -17,6 +17,7 @@ const defaults = {
     ip: "127.0.0.1",
   },
   secret: 1337,
+  bufSize: 65531,
 };
 
 const opts = {
@@ -55,21 +56,21 @@ if (idx === -1) {
 
 const connections: Record<number, Deno.Conn> = {};
 
-const tunnelWriteQueue: { connID: number; buf: Uint8Array }[] = [];
+const tunnelWriteQueue: TaggedPacket[] = [];
 
 (async () => {
   while (true) {
     const result = tunnelWriteQueue.shift();
     if (result) {
-      await p.writeTunnelPacket(result.connID, result.buf);
+      await p.writeTunnelPacket(result.id, result.data);
     } else {
       await sleep(1);
     }
   }
-})().catch((err) => console.error("[tunnel write loop]: " + err.message));
+})().catch((err) => console.error("[tunnel write loop]: ", err));
 (async () => {
   while (true) {
-    const result = await p.readTunnelPacket();
+    const result = await p.readTunnelPacket().catch(() => null);
     if (result === null) {
       console.error("Lost connection to tunnel");
       Deno.exit(1);
@@ -83,20 +84,20 @@ const tunnelWriteQueue: { connID: number; buf: Uint8Array }[] = [];
     }
     const subconn = connections[idx];
     (async () => {
-      const buf = new Uint8Array(65535);
       while (true) {
+        const buf = new Uint8Array(opts.bufSize);
         const result = await subconn.read(buf);
         if (result === null) {
           delete connections[idx];
           return subconn.close();
         }
-        tunnelWriteQueue.push({ connID: idx, buf: buf.subarray(0, result) });
+        tunnelWriteQueue.push({ id: idx, data: buf.subarray(0, result) });
       }
-    })().catch((err) => console.error("[subconn read loop]: " + err.message));
+    })().catch((err) => console.error("[subconn read loop]: ", err));
     await writeAll(subconn, result.data).catch((err) => {
-      console.error("[subconn write]: " + err.message);
+      console.error("[subconn write]: ", err);
       delete connections[idx];
       return subconn.close();
     });
   }
-})().catch((err) => console.error("[subconn write loop]: " + err.message));
+})().catch((err) => console.error("[subconn write loop]: ", err));

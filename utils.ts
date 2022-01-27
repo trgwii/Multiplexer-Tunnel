@@ -9,7 +9,7 @@ export const readAll = async (r: Deno.Reader, buf: Uint8Array) => {
   while (bytesRead < buf.byteLength) {
     const result = await r.read(buf.subarray(bytesRead));
     if (result === null) {
-      return null;
+      return bytesRead > 0 ? bytesRead : null;
     }
     bytesRead += result;
   }
@@ -55,4 +55,9 @@ export const parseArgs = (args: string[]) => {
       : v;
   }
   return result;
+};
+
+export type TaggedPacket = {
+  id: number;
+  data: Uint8Array;
 };

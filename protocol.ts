@@ -1,4 +1,4 @@
-import { readAll, writeAll } from "./utils.ts";
+import { readAll, type TaggedPacket, writeAll } from "./utils.ts";
 
 import { Packet } from "./packet.ts";
 
@@ -10,7 +10,7 @@ export class Protocol {
     if (result === null) {
       return null;
     }
-    const p = Packet.from(buf);
+    const p = Packet.from(buf.subarray(0, result));
     const secret = p.readUint32();
     const port = p.readUint16();
     const ip = p.readIP();
@@ -30,7 +30,7 @@ export class Protocol {
     if (result === null) {
       return -1;
     }
-    const p = Packet.from(buf);
+    const p = Packet.from(buf.subarray(0, result));
     const idx = p.readInt32();
     return idx;
   }
@@ -46,13 +46,13 @@ export class Protocol {
     if (sizeResult === null) {
       return null;
     }
-    const size = Packet.from(sizeBuf).readUint16();
+    const size = Packet.from(sizeBuf.subarray(0, sizeResult)).readUint16();
     const buf = new Uint8Array(new ArrayBuffer(size));
     const result = await readAll(this.conn, buf);
     if (result === null) {
       return null;
     }
-    return buf;
+    return buf.subarray(0, result);
   }
   async writeVarPacket(buf: Uint8Array) {
     await writeAll(

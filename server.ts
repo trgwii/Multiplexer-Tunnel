@@ -1,4 +1,4 @@
-import { parseArgs, sleep, writeAll } from "./utils.ts";
+import { parseArgs, sleep, type TaggedPacket, writeAll } from "./utils.ts";
 import { Protocol } from "./protocol.ts";
 
 const servers = [];
@@ -8,7 +8,7 @@ const defaults = {
     port: 2000,
     ip: "127.0.0.1",
   },
-  bufSize: 65535,
+  bufSize: 65531,
   secret: 1337,
 };
 const opts = {
@@ -30,7 +30,7 @@ for await (
 ) {
   (async () => {
     const p = new Protocol(conn);
-    const tunnelWriteQueue: { connID: number; buf: Uint8Array }[] = [];
+    const tunnelWriteQueue: TaggedPacket[] = [];
 
     let subconnIndex = 0;
 
@@ -47,12 +47,12 @@ for await (
       while (true) {
         const packet = tunnelWriteQueue.shift();
         if (packet) {
-          await p.writeTunnelPacket(packet.connID, packet.buf);
+          await p.writeTunnelPacket(packet.id, packet.data);
         } else {
           await sleep(1);
         }
       }
-    })().catch((err) => console.error("[tunnel write queue]: " + err.message));
+    })().catch((err) => console.error("[tunnel write queue]: ", err));
     try {
       const listener = Deno.listen({ port, hostname: ip });
       const index = servers.push(listener) - 1;
@@ -60,7 +60,7 @@ for await (
       const subconns: Record<number, Deno.Conn> = {};
       (async () => {
         while (true) {
-          const result = await p.readTunnelPacket();
+          const result = await p.readTunnelPacket().catch(() => null);
           if (result === null) {
             servers.splice(servers.indexOf(listener), 1);
             listener.close();
@@ -71,29 +71,27 @@ for await (
             await writeAll(subconn, result.data);
           }
         }
-      })().catch((err) => console.error("[tunnel read loop]: " + err.message));
+      })().catch((err) => console.error("[tunnel read loop]: ", err));
       for await (const subconn of listener) {
         const idx = subconnIndex++;
         subconns[idx] = subconn;
         (async () => {
-          const buf = new Uint8Array(opts.bufSize);
           while (true) {
+            const buf = new Uint8Array(opts.bufSize);
             const result = await subconn.read(buf);
             if (result === null) {
               delete subconns[idx];
               return subconn.close();
             }
             tunnelWriteQueue.push({
-              connID: idx,
-              buf: buf.subarray(0, result),
+              id: idx,
+              data: buf.subarray(0, result),
             });
           }
-        })().catch((err) =>
-          console.error("[subconn read loop]: " + err.message)
-        );
+        })().catch((err) => console.error("[subconn read loop]: ", err));
       }
     } catch (err) {
       await p.writeInitPacketResponse(-1);
     }
-  })().catch((err) => console.error("[main loop]: " + err.message));
+  })().catch((err) => console.error("[main loop]: ", err));
 }
