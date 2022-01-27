@@ -34,3 +34,25 @@ export const copy = async (r: Deno.Reader, w: Deno.Writer) => {
     await w.write(buf.subarray(0, result));
   }
 };
+
+export const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+type Args = { [K: string]: string | number | Args };
+
+export const parseArgs = (args: string[]) => {
+  const result: Args = {};
+  for (const arg of args) {
+    const [k, v] = arg.split("=");
+    const keys = k.split(".");
+    let cur: Args = result;
+    for (const key of keys.slice(0, -1)) {
+      cur[key] = cur[key] ?? {};
+      cur = cur[key] as Args;
+    }
+    cur[keys[keys.length - 1]] = [...v].every((c) => "0123456789".includes(c))
+      ? Number(v)
+      : v;
+  }
+  return result;
+};
