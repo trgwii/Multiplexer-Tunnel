@@ -22,10 +22,6 @@ const opts = {
 
 console.log(Deno.inspect(opts, { colors: !Deno.noColor, compact: false }));
 
-const tunnelWriteQueue: { connID: number; buf: Uint8Array }[] = [];
-
-let subconnIndex = 0;
-
 for await (
   const conn of Deno.listen({
     port: opts.listen.port,
@@ -34,6 +30,10 @@ for await (
 ) {
   (async () => {
     const p = new Protocol(conn);
+    const tunnelWriteQueue: { connID: number; buf: Uint8Array }[] = [];
+
+    let subconnIndex = 0;
+
     const result = await p.readInitPacket();
     if (result === null) {
       return conn.close();
